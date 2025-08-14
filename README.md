@@ -70,7 +70,7 @@ type UserLessonProgress @model @searchable {
   updatedAt: AWSDateTime
 }
 
-
+```
 
 
 The Challenge
