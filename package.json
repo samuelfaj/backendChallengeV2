@@ -8,12 +8,18 @@
     "dev": "bun --watch src/index.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
-    "db:studio": "drizzle-kit studio"
+    "db:studio": "drizzle-kit studio",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix"
   },
   "devDependencies": {
     "@types/bun": "latest",
+    "@typescript-eslint/eslint-plugin": "^8.40.0",
+    "@typescript-eslint/parser": "^8.40.0",
     "drizzle-kit": "^0.31.4",
-    "drizzle-orm": "^0.44.4"
+    "drizzle-orm": "^0.44.4",
+    "eslint": "^9.33.0",
+    "lint-staged": "^16.1.5"
   },
   "peerDependencies": {
     "typescript": "^5"
@@ -21,5 +27,10 @@
   "dependencies": {
     "express": "^5.1.0",
     "pg": "^8.16.3"
+  },
+  "lint-staged": {
+    "*.{ts,tsx}": [
+      "eslint --fix"
+    ]
   }
 }
