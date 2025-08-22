@@ -26,6 +26,8 @@ It was the faster choice to develop the test and:
 - **Bulk Operations**: REST better supports efficient batch operations for offline sync
 - **Caching**: HTTP caching strategies work naturally with REST endpoints
 
+### Endpoints
+
 - `POST /video/sessions`
   - Body: `{ userId, lessonId, isAssigned?, clientInfo? }`
   - Returns: `{ sessionId, attemptId, message }`
