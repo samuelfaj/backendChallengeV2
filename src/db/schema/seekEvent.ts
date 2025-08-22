@@ -15,7 +15,10 @@ export const seekEvent = pgTable("seek_event", {
 	toSecond: integer("to_second").notNull(),
 	allowed: boolean("allowed").notNull(),
 	reason: text("reason").notNull(),
+	isSkip: boolean("is_skip").notNull().default(false),
+	skipDistance: integer("skip_distance"),
 	createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
 }, (table) => ({
 	bySession: index("seek_session_idx").on(table.sessionId, table.createdAt),
+	bySkips: index("seek_skip_idx").on(table.sessionId, table.isSkip),
 }));
