@@ -1,173 +1,115 @@
-# backendChallengeV2
-# Empath Take-Home: Course Assignment & Progress Tracking Redesign
+I strongly believe that better than own the most modern technology we need to think about maintancy.
 
-**Timebox:** 2 hours (stop there even if incomplete)  
-**Stack:** Node.js (TS or JS), DynamoDB Local. No deploy required.  
-**Focus:** Data modeling, backend API design, migration planning, and practical handling of watch tracking.
+The best technology with a small number of people that can handle it becomes really expensive and hard to evolve.
 
----
+The key adopted here is: simplicity.
 
-## Background
+## Why PostgreSQL instead of DynamoDB
+- **Relational aggregation fit**: Computing coverage, effective time, and reconciling attempts involves joins, ordering, and window-like operations that are natural in SQL and less ergonomic/costly in DynamoDB.
+- **Consistency & transactions**: ACID transactions across multiple tables (attempt/session/segment/seek) simplify correctness for idempotency, reconciliation, and cutovers.
+- **Operational simplicity**: It's easy to find developers who can work with Postgres, it's simpler and requires less design effort.
+- **Cost & performance**: For typical training workloads with moderate write throughput and heavy read/reporting, a single regional Postgres with read replicas is cost-effective. Indexes avoid scans and keep p95 low. Partitioning by time or lesson can extend headroom when needed.
+- **Analytics**: SQL makes downstream reporting simpler without copying to a separate store prematurely.
 
-Today when a user is assigned a course:
+If global low-latency multi-region writes or extreme write volumes are core needs, DynamoDB can be considered, but would require careful key design, streams-based aggregation, and more bespoke reporting flows. Given current requirements and code, PostgreSQL is the pragmatic choice.
 
-- We create one **UserCourse**, a **UserLesson** for each lesson, and then many **UserLessonProgress** rows every few seconds while the lesson plays.  
-- Seeking ahead is restricted off those fine-grained progress points.  
-- Re-takes (annual reups) require unassign → reassign, which loses history.  
-- Watching while **not assigned** isn’t tracked toward the course, which skews real watch-time.  
-- **Current API** is GraphQL (AppSync/Amplify), and we’d like to keep it if practical — but we are not married to it. If you propose something else (REST, hybrid, etc.), justify why.
+Errors in DynamoDB design are expensive and REALLY REALLY hard to revert (you can't do a simple UPDATE).
 
-You’ll propose a new structure that solves these problems, plus minimal endpoints the frontend would need to write/read data. Keep it open-ended and focus on sound reasoning.
+## API Style Justification
 
----
+**Choice: REST over GraphQL**
 
-## Current Schema (simplified, auth removed)
+It was the faster choice to develop the test and:
 
-```graphql
-type UserCourse @model @searchable {
-  id: ID!
-  course: Course @hasOne
-  userCourseCourseId: ID!
-    @index(
-      name: "listUserCoursesByCourseId"
-      queryField: "listUserCoursesByCourseId"
-      sortKeyFields: ["createdAt"]
-    )
-  userLessons: [UserLesson] @hasMany
-  userQuizes: [UserQuizes] @hasMany
-  user: String
-  dueDate: AWSDateTime
-  dateStarted: AWSDateTime
-  dateCompleted: AWSDateTime
-  dateLastViewed: AWSDateTime
-  status: String
-  lastCompletedDate: AWSDateTime
-}
+- **Simplicity**: REST endpoints are easier to cache, monitor, and debug
+- **Real-time Requirements**: Video progress tracking needs predictable latency; GraphQL resolver overhead adds unnecessary complexity
+- **Bulk Operations**: REST better supports efficient batch operations for offline sync
+- **Caching**: HTTP caching strategies work naturally with REST endpoints
 
-enum UserLessonStatus {
-  Assigned
-  InProgress
-  Completed
-}
+- `POST /video/sessions`
+  - Body: `{ userId, lessonId, isAssigned?, clientInfo? }`
+  - Returns: `{ sessionId, attemptId, message }`
+  - Behavior: Ensures an active `lesson_attempt` exists (creating if needed), then starts a session.
 
-type UserLesson @model @searchable {
-  id: ID!
-  lesson: Lesson @hasOne
-  progress: [UserLessonProgress] @hasMany
-  status: UserLessonStatus
-  user: UserProfile @hasOne
-  dateStarted: AWSDateTime
-  dateCompleted: AWSDateTime
-  dateLastViewed: AWSDateTime
-  maxProgress: Int
-}
+- `POST /video/sessions/:sessionId/progress`
+  - Body: `{ segments?: WatchSegment[], seeks?: SeekEvent[] }`
+  - `WatchSegment`: `{ clientEventId, startSecond, endSecond, speed }`
+  - `SeekEvent`: `{ fromSecond, toSecond, allowed?, reason? }`
+  - Idempotency: `(sessionId, clientEventId)` uniqueness prevents duplicate segment writes.
 
-type UserLessonProgress @model @searchable {
-  id: ID!
-  progress: Float!
-  owner: String
-  createdAt: AWSDateTime!
-  updatedAt: AWSDateTime
-}
+- `PUT /video/sessions/:sessionId/heartbeat`
+  - Body: none
+  - Updates `last_heartbeat_at` to limit missed time on interruption.
 
-```
+- `PUT /video/sessions/:sessionId/close`
+  - Body: none
+  - Marks session closed and triggers aggregation onto the linked `lesson_attempt`.
+
+- `PUT /video/attempts/:attemptId/complete`
+  - Marks an attempt complete.
+
+- `GET /video/users/:userId/lessons/:lessonId/progress`
+  - Returns latest attempt, recent sessions, and aggregates.
+
+- `GET /video/users/:userId/unassigned-history`
+  - Lists unassigned attempts/sessions for later crediting.
+
+- `GET /video/sessions/:sessionId/skip-analytics`
+  - Returns skip events summary.
+
+GraphQL alternative: The same operations can be expressed as mutations/queries. REST is retained here for operational simplicity and Cloud Run friendliness (low cold-start overhead, minimal middleware).
+
+### Session Interruption Handling
+
+1. **Heartbeat Mechanism**: Frontend sends heartbeat every 30 seconds
+2. **Graceful Degradation**: If heartbeat fails, client buffers segments locally
+3. **Reconnection Logic**: On reconnect, client sends buffered segments via bulk endpoint
+4. **Stale Session Detection**: Server marks sessions stale after 5 minutes without heartbeat
+5. **Progress Preservation**: All segment data persisted immediately, aggregation happens on session close
+
+## Seek, Speed, and Interruption Handling
+
+- **Watched Segments**: The client posts consolidated segments (e.g., every 5–15 seconds or on pause/seek). Each segment carries `speed`. Aggregation computes:
+  - Effective time: `sum((end - start) / speed)`
+  - Coverage: merge overlapping intervals to compute unique seconds observed.
+
+- **Seek Behavior**:
+  - Unassigned users: seeking past the highest verified progress is recorded as a `seek_event` with `allowed=false`. The service marks it `is_skip` when the jump exceeds a threshold (e.g., >5s). This provides managers visibility that the lesson was not watched linearly.
+  - Assigned users: policy choice — either block seeks client-side beyond `maxVerifiedSecond` or allow and mark `allowed=false` with reason (e.g., `policy_violation`). Both are supported; UX is configurable.
+
+- **Interruptions**:
+  - Heartbeat updates `last_heartbeat_at` frequently (e.g., every 15–30s). On tab close or network loss, the last beat bounds missed time.
+  - Idempotent segment writes ensure retries don’t duplicate data.
+  - Closing a session triggers aggregation so progress is not lost if users navigate away.
+
+- **Avoid Per-Second Writes**: Segments are time-ranged events; this keeps write rates low and storage compact while still reconstructing coverage precisely.
 
 
-The Challenge
--------------
+## Concurrency & Idempotency
 
-Propose a **new data structure**, a **minimal set of frontend-facing endpoints** (your choice), and a **migration approach** that:
+- `watch_segment.uniq(session_id, client_event_id)` eliminates duplicates on client retries.
+- Aggregation runs on session close; if run multiple times, it upserts totals at the attempt level deterministically.
+- Use simple transactional updates per request, keeping write units small and avoiding long locks.
 
-1.  Supports re-takes (annual reups) without losing a user’s history.
-    
-2.  Tracks viewing even when the user is **not assigned**, so prior watch can be credited later.
-    
-3.  **Seek behavior requirement (clarified):**
-    
-    *   If a user is **unassigned** and seeks past their highest verified progress, capture that as a **skip event** (or equivalent) so managers/admins can see the lesson wasn’t watched end-to-end.
-        
-    *   If a user is **assigned**, you may limit seeking or record a similar flag — your call — but describe the UX and data you’d store to support it.
-        
-4.  Records **playback speed** for watched segments (.5× to 2×) so we can see which sections were watched at which speed, and compute both:
-    
-    *   **Effective watch time** (adjusted by speed)
-        
-    *   **Coverage** (which raw seconds on the timeline were actually observed)
-        
-5.  Minimizes write amplification versus the per-second model.
-    
-6.  Avoids table scans for hot paths.
-    
-7.  **Handles session interruptions:** If a user leaves the app or navigates between lessons/progress updates, your approach should capture progress with **minimal time missed** in tracking.
-    
+## Migration Plan (Safe Path)
 
-Keep it open-ended — show your thinking.
+1. **Dual-write (if needed)**: Keep existing per-second or legacy tracking, while writing to the new `watch_segment`/`seek_event` model.
+2. **Backfill**: Translate historical events into segments by coalescing contiguous seconds and deriving seeks from gaps/jumps.
+3. **Cutover**: Switch read paths (progress pages, reports) to use `lesson_attempt` aggregates derived from segments.
+4. **Rollback**: Toggle reads back to legacy tables if needed; dual-writes maintain consistency during the window.
+5. **TTL/Archival**: Optionally archive raw `watch_segment`/`seek_event` older than N days after aggregates are materialized, or partition by month for cheaper retention and faster pruning.
 
-What to Deliver
----------------
+### Crediting Unassigned Watch Later
+- When a user becomes assigned for a lesson within a policy window (e.g., last 12 months), reconcile prior unassigned `watch_session`s for the same `(user, lesson)`:
+  - Create or update the current `lesson_attempt` with merged coverage and effective time from qualifying sessions.
+  - Cap credited coverage to the lesson duration and policy limits.
+  - Mark contributing sessions/segments with a `credited_attempt_id` (additional nullable column) if auditability is required.
 
-*   **Proposed data model**
-    
-    *   Can be DynamoDB or another AWS-managed service (RDS, Aurora, etc.) if you think it’s a better fit.
-        
-    *   If you propose a different storage layer, justify why in terms of **cost**, **performance**, **geographic replication**, and **development complexity**.
-        
-    *   Define keys and any indexes for your chosen approach, and explain how they serve the access patterns.
-        
-*   **Frontend-facing endpoints (outline only)**
-    
-    *   Describe the endpoints the frontend would need to **write** (e.g., watch heartbeats/segments, seek attempts, enroll/reup) and **read** (attempt status, lesson coverage, reports).
-        
-    *   Define input/output shapes at a high level.
-        
-    *   You may keep these as GraphQL operations or propose a different API style if you believe it’s better — but explain why.
-        
-*   **Seek, speed & interruption handling (approach)**
-    
-    *   How you represent watched **segments** and **speed** per segment.
-        
-    *   How you decide if a seek should be allowed, flagged, or merely recorded when unassigned.
-        
-    *   How you compute **effective time** vs **coverage** without per-second rows.
-        
-    *   How your design ensures **minimal progress loss** when a user leaves or navigates mid-lesson.
-        
-    *   Concurrency considerations (avoid races, idempotency).
-        
-*   **Migration plan**
-    
-    *   Safe path from the current model: dual-writes/backfill/cutover/rollback at a high level.
-        
-    *   How to credit prior unassigned watch to a later assignment (e.g., windowing rules, caps).
-        
-*   **Trade-offs**
-    
-    *   Storage vs. compute, write reduction vs. reconstruction cost, index/query design, and any compromises.
-        
+## Access Patterns and Indexing
 
-Constraints & Expectations
---------------------------
+- Start/read latest attempt: `lesson_attempt` indexed by `(user_id, lesson_id)` and ordered by `attempt_no DESC`.
+- Append progress: `watch_segment` lookup by `session_id` plus unique `(session_id, client_event_id)` for idempotency.
+- Skip analytics: `seek_event` by `(session_id, is_skip)` avoids scans.
+- Session history: `watch_session` by `(lesson_attempt_id)` or `(user_id, lesson_id, started_at)` for recent lists.
 
-*   Default assumption: DynamoDB (NoSQL).
-    
-*   Current API: GraphQL — we’d like to keep it if practical, but open to other API approaches with justification.
-    
-*   Alternate AWS-managed storage is acceptable with **clear justification** and trade-off analysis (cost, speed, replication).
-    
-*   Idempotency for client retries (e.g., heartbeats).
-    
-*   Consider TTL for stale granular artifacts if you aggregate elsewhere.
-    
-*   Keep your solution comprehensible; avoid heavyweight frameworks.
-    
-
-Anti-AI “Show Your Work” (lightweight guardrails)
--------------------------------------------------
-
-*   Keep a short **build journal** (timestamps, decisions, dead-ends) in your README.
-    
-*   Make **3–6 small commits** with meaningful messages.
-    
-*   Add a per-candidate **SEED\_WORD** (we’ll provide) into sample data or ids.
-    
-*   If you used AI for a snippet, note where and why. We care more about your design than boilerplate.
+These indexes match the hot paths and keep queries selective, avoiding table scans.
