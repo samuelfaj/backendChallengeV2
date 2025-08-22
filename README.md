@@ -116,6 +116,9 @@ These indexes match the hot paths and keep queries selective, avoiding table sca
 
 ## Tests
 
+✅ 84 tests across 3 files
+
+```
 bun test v1.2.8 (adab0f64)
 
 src/controllers/IndexController.test.ts:
@@ -212,3 +215,4 @@ src/services/VideoProgressService.test.ts:
  0 fail
  164 expect() calls
 Ran 84 tests across 3 files. [151.00ms]
+```
