@@ -1,6 +1,6 @@
-I strongly believe that better than own the most modern technology we need to think about maintancy.
+I strongly believe that, more important than owning the most modern technology, is thinking about maintainability.
 
-The best technology with a small number of people that can handle it becomes really expensive and hard to evolve.
+The best technology, if only a few people can handle it, becomes very expensive and hard to evolve.
 
 The key adopted here is: simplicity.
 
