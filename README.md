@@ -113,3 +113,102 @@ GraphQL alternative: The same operations can be expressed as mutations/queries. 
 - Session history: `watch_session` by `(lesson_attempt_id)` or `(user_id, lesson_id, started_at)` for recent lists.
 
 These indexes match the hot paths and keep queries selective, avoiding table scans.
+
+## Tests
+
+bun test v1.2.8 (adab0f64)
+
+src/controllers/IndexController.test.ts:
+✓ IndexController > Controller Structure > should have index method [0.72ms]
+✓ IndexController > Controller Structure > should have error method
+✓ IndexController > Controller Structure > should export a class with static methods [0.29ms]
+✓ IndexController > API Response Structure Testing > should test expected response format for index endpoint [1.03ms]
+✓ IndexController > API Response Structure Testing > should validate message content [0.05ms]
+✓ IndexController > API Response Structure Testing > should validate date object creation [0.45ms]
+✓ IndexController > HTTP Status Code Constants > should use correct HTTP status codes
+✓ IndexController > HTTP Status Code Constants > should test index endpoint uses OK status
+✓ IndexController > Error Handling Behavior > should test error creation [0.16ms]
+✓ IndexController > Error Handling Behavior > should test error throwing mechanism [0.23ms]
+✓ IndexController > Error Handling Behavior > should validate error message content
+✓ IndexController > Method Signature Validation > should accept standard Express parameters [0.01ms]
+✓ IndexController > Method Signature Validation > should validate Request object structure [0.02ms]
+✓ IndexController > Method Signature Validation > should validate Response object structure [0.02ms]
+✓ IndexController > AsyncHandler Integration > should test that methods are wrapped functions [0.01ms]
+✓ IndexController > AsyncHandler Integration > should test function properties [0.02ms]
+✓ IndexController > Data Flow Testing > should test response data creation flow [0.18ms]
+✓ IndexController > Data Flow Testing > should test date generation timing [0.02ms]
+✓ IndexController > Data Flow Testing > should test object property assignment [0.02ms]
+✓ IndexController > Code Quality Testing > should test string constants
+✓ IndexController > Code Quality Testing > should test unreachable code logic [0.03ms]
+✓ IndexController > Code Quality Testing > should test method chaining pattern [0.03ms]
+✓ IndexController > Business Logic Validation > should test successful endpoint behavior expectations [0.06ms]
+✓ IndexController > Business Logic Validation > should test error endpoint behavior expectations [0.01ms]
+✓ IndexController > Business Logic Validation > should test endpoint differences [0.02ms]
+
+src/controllers/VideoProgressController.test.ts:
+✓ VideoProgressController > Input Validation > should validate startSession input with missing userId [1.99ms]
+✓ VideoProgressController > Input Validation > should validate recordProgress input with invalid segment data [0.98ms]
+✓ VideoProgressController > Input Validation > should validate bulkProgress input with empty sessions array [0.08ms]
+✓ VideoProgressController > Schema Validation > should accept valid startSession data [0.57ms]
+✓ VideoProgressController > Schema Validation > should accept valid recordProgress data [0.42ms]
+✓ VideoProgressController > Schema Validation > should use default values correctly [0.34ms]
+✓ VideoProgressController > Parameter Validation > should validate sessionId parameter [0.24ms]
+✓ VideoProgressController > Parameter Validation > should validate attemptId parameter [0.21ms]
+✓ VideoProgressController > Parameter Validation > should validate userId and lessonId parameters [0.23ms]
+✓ VideoProgressController > Data Transformation > should transform segment data correctly [0.02ms]
+✓ VideoProgressController > Data Transformation > should transform seek data correctly [0.01ms]
+✓ VideoProgressController > Data Transformation > should apply default values for missing fields [0.21ms]
+✓ VideoProgressController > Business Logic > should handle session start flow [0.03ms]
+✓ VideoProgressController > Business Logic > should handle bulk progress processing logic
+✓ VideoProgressController > Business Logic > should handle error result structure
+✓ VideoProgressController > Business Logic > should handle success result structure
+✓ VideoProgressController > API Response Formats > should format startSession response correctly [0.03ms]
+✓ VideoProgressController > API Response Formats > should format progress response correctly
+✓ VideoProgressController > API Response Formats > should format unassigned history response correctly [0.02ms]
+✓ VideoProgressController > API Response Formats > should format bulk progress response correctly [0.02ms]
+
+src/services/VideoProgressService.test.ts:
+✓ VideoProgressService > startSession > should create a new session and return session ID [0.40ms]
+✓ VideoProgressService > startSession > should handle session creation without lessonAttemptId [0.06ms]
+✓ VideoProgressService > startSession > should handle session creation without clientInfo [0.03ms]
+✓ VideoProgressService > recordWatchSegment > should record a watch segment with correct data [0.04ms]
+✓ VideoProgressService > recordWatchSegment > should handle duplicate segments gracefully [0.03ms]
+✓ VideoProgressService > recordWatchSegment > should handle segments with fractional speeds [0.02ms]
+✓ VideoProgressService > recordSeekEvent > should record a seek event and detect skips correctly [0.03ms]
+✓ VideoProgressService > recordSeekEvent > should not mark small seeks as skips [0.03ms]
+✓ VideoProgressService > recordSeekEvent > should handle allowed seeks [0.03ms]
+✓ VideoProgressService > recordSeekEvent > should handle backward seeks [0.02ms]
+✓ VideoProgressService > updateSessionHeartbeat > should update session heartbeat timestamp [0.03ms]
+✓ VideoProgressService > closeSession > should close session and trigger progress calculation [0.60ms]
+✓ VideoProgressService > getLessonProgress > should return lesson progress for existing attempt [0.22ms]
+✓ VideoProgressService > getLessonProgress > should return null for non-existent lesson [0.07ms]
+✓ VideoProgressService > getOrCreateLessonAttempt > should return existing active attempt [0.19ms]
+✓ VideoProgressService > getOrCreateLessonAttempt > should create new attempt when none exists [0.18ms]
+✓ VideoProgressService > getOrCreateLessonAttempt > should create first attempt when no previous attempts exist [0.19ms]
+✓ VideoProgressService > markLessonComplete > should mark lesson attempt as completed [0.04ms]
+✓ VideoProgressService > getUnassignedViewingHistory > should return unassigned viewing history [0.10ms]
+✓ VideoProgressService > getUnassignedViewingHistory > should return empty array when no unassigned history exists [0.06ms]
+✓ VideoProgressService > getSkipAnalytics > should return skip analytics for session [0.16ms]
+✓ VideoProgressService > getSkipAnalytics > should return empty analytics when no skips exist [0.08ms]
+✓ VideoProgressService > calculateProgressFromSegments > should calculate progress correctly from segments [0.24ms]
+✓ VideoProgressService > calculateProgressFromSegments > should handle overlapping segments correctly [0.03ms]
+✓ VideoProgressService > calculateProgressFromSegments > should handle empty segments [0.02ms]
+✓ VideoProgressService > calculateCoverageFromIntervals > should calculate coverage from non-overlapping intervals [0.02ms]
+✓ VideoProgressService > calculateCoverageFromIntervals > should calculate coverage from overlapping intervals [0.01ms]
+✓ VideoProgressService > calculateCoverageFromIntervals > should handle single interval [0.02ms]
+✓ VideoProgressService > calculateCoverageFromIntervals > should handle empty intervals
+✓ VideoProgressService > calculateCoverageFromIntervals > should handle complex overlapping patterns
+✓ VideoProgressService > Error Handling > should handle database errors gracefully [0.09ms]
+✓ VideoProgressService > Error Handling > should handle invalid speed values [0.04ms]
+✓ VideoProgressService > Error Handling > should handle negative time values [0.03ms]
+✓ VideoProgressService > Edge Cases > should handle very high playback speeds [0.03ms]
+✓ VideoProgressService > Edge Cases > should handle very low playback speeds [0.02ms]
+✓ VideoProgressService > Edge Cases > should handle long video segments [0.03ms]
+✓ VideoProgressService > Edge Cases > should handle many overlapping intervals efficiently [0.05ms]
+✓ VideoProgressService > Performance Edge Cases > should handle large number of segments [0.43ms]
+✓ VideoProgressService > Performance Edge Cases > should handle segments with microsecond precision [0.16ms]
+
+ 84 pass
+ 0 fail
+ 164 expect() calls
+Ran 84 tests across 3 files. [151.00ms]
