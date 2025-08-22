@@ -31,6 +31,7 @@ export default [
 			...tsPlugin.configs.recommended.rules,
 			'indent': ['error', 'tab'],
 			'no-tabs': 'off',
+			'@typescript-eslint/no-explicit-any': 'off',
 		},
 	},
 ];

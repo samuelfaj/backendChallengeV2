@@ -1,19 +1,13 @@
 // src/app.ts
 import app from "./config/app";
-import { checkDatabaseConnection } from "./db/health.js";
+import routes from "./routes";
+import DbHelper from "./helpers/DbHelper";
 
-app.get("/", async (req, res) => {
-	res.send("Hello World");
-});
+app.use('/', routes);
 
 async function startServer() {
-	const dbHealth = await checkDatabaseConnection();
-  
-	if (dbHealth.connected) {
+	if (await DbHelper.checkConnection()) {
 		console.log("✅ Database connection successful");
-	} else {
-		console.error("❌ Database connection failed:", dbHealth.error);
-		process.exit(1);
 	}
 
 	app.listen(process.env.PORT || 3000, () => {
@@ -21,7 +15,4 @@ async function startServer() {
 	});
 }
 
-startServer().catch((error) => {
-	console.error("Failed to start server:", error);
-	process.exit(1);
-});
+startServer();
